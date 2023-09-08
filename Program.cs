@@ -21,8 +21,7 @@ async Task generate()
     var page = await getPage();
     var matches = await extractTables(page);
 
-    foreach (var match in matches)
-        System.Console.WriteLine(match);
+    System.Console.WriteLine(matches.Count());
 }
 
 async Task<Match[]> extractTables(string page)
@@ -48,20 +47,24 @@ List<Match> processDay(string dayHtml)
 {
     List<Match> result = new();
     int day = int.Parse(dayHtml.Substring(0, 3).Trim());
+    
+    var isCurrent = dayHtml.Count() > 50_000;
 
     var start = 0;
     var end = dayHtml.IndexOf("</tr", start + 1);
-    
+
     for (int i = 0; i < 10; i++)
     {
-        start = dayHtml.IndexOf("<tr", end + 1);
-        end = dayHtml.IndexOf("</tr", start + 1);
+        start = dayHtml.IndexOf("<tr class=\"match", end + 1);
+        end = isCurrent ? 
+            dayHtml.IndexOf("link ac sm-invisible", start + 1)
+          : dayHtml.IndexOf("</tr", start + 1);
         if (start == -1 || end == -1)
             break;
         
         var row = dayHtml.Substring(start, end - start);
 
-        var data = processRow(row);
+        var data = processRow(row, isCurrent);
         if (data is null)
             continue;
         
@@ -74,7 +77,7 @@ List<Match> processDay(string dayHtml)
     return result;
 }
 
-Match processRow(string row)
+Match processRow(string row, bool crr = false)
 {
     if (row is null)
         return null;
@@ -82,35 +85,74 @@ Match processRow(string row)
     Match match = new Match();
     match.IsComplete = row.Contains("match complete");
     var get = getDataReader(row);
-    get(); // discard
 
-    match.HomeTeam = find(
-        get(),
-        "span", "span",
-        5, 2
-    );
-
-    var scoretr = get();
-    if (match.IsComplete)
+    if (crr)
     {
-        var score = find(
-            scoretr,
-            "span", "span",
-            27, 2
+        get(); // discard
+        get(); // discard
+        
+        match.HomeTeam = find(
+            get(),
+            "<span itemprop", "</span>",
+            22
         );
-        var scoreData = score.Split(' ');
-        match.HomeGoals = int.Parse(scoreData[0]);
-        match.AwayGoals = int.Parse(scoreData[2]);
-    }
 
-    match.AwayTeam = reverse(
-        find(
-            reverse(get()),
-            ">a/<",
-            ">\"",
-            4, 0
-        )
-    );
+        for (int i = 0; i < 40; i++)
+            get(); // discard
+        
+        var scoretr = get();
+        if (match.IsComplete)
+        {
+            var score = find(
+                scoretr,
+                "<span class=\"bold ft-score\">", "</span>",
+                28
+            );
+            var scoreData = score.Split(' ');
+            match.HomeGoals = int.Parse(scoreData[0]);
+            match.AwayGoals = int.Parse(scoreData[2]);
+        }
+        
+        get();
+        
+        match.AwayTeam = find(
+            get(),
+            "<span itemprop", "</span>",
+            22
+        );
+    }
+    else
+    {
+        get(); // discard
+
+        match.HomeTeam = find(
+            get(),
+            "span", "span",
+            crr ? 21 : 5, 2
+        );
+
+        var scoretr = get();
+        if (match.IsComplete)
+        {
+            var score = find(
+                scoretr,
+                "span", "span",
+                27, 2
+            );
+            var scoreData = score.Split(' ');
+            match.HomeGoals = int.Parse(scoreData[0]);
+            match.AwayGoals = int.Parse(scoreData[2]);
+        }
+
+        match.AwayTeam = reverse(
+            find(
+                reverse(get()),
+                ">a/<",
+                ">\"",
+                4, 0
+            )
+        );
+    }
 
     return match;
 }
@@ -133,7 +175,7 @@ string getData(string text, ref int start)
     if (start == -1)
         return null;
     
-    var end = text.IndexOf("td>", start + 1);
+    var end = text.IndexOf("/td>", start + 1);
     if (end == -1)
         return null;
     
