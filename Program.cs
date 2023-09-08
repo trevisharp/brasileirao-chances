@@ -2,26 +2,24 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+// using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Net.NetworkInformation;
 
-try
-{
-    await generate();
-}
-catch (Exception ex)
-{
-    Console.WriteLine(ex.Message);
-}
+// ApplicationConfiguration.Initialize();
+
+// var form = new Form();
+
+// Application.Run(form);
 
 async Task generate()
 {
     var page = await getPage();
     var matches = await extractTables(page);
 
-    System.Console.WriteLine(matches.Count());
+
 }
 
 async Task<Match[]> extractTables(string page)
@@ -293,4 +291,11 @@ public class Match
     public override string ToString() => IsComplete ?
         $"{HomeTeam} {HomeGoals} x {AwayGoals} {AwayTeam} [{Round}]" :
         $"{HomeTeam} x {AwayTeam} [{Round}]"; 
+}
+
+public class Team
+{
+    public string Name { get; set; }
+    public int Points { get; set; }
+    public int Elo { get; set; }
 }
