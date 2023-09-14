@@ -14,12 +14,84 @@ using System.Net.NetworkInformation;
 
 // Application.Run(form);
 
+await generate();
+
 async Task generate()
 {
     var page = await getPage();
     var matches = await extractTables(page);
+    var teams = computeTeams(matches);
 
+    foreach (var team in teams.OrderByDescending(p => p.Points))
+    {
+        Console.WriteLine(team);
+    }
+}
 
+void computeMatch(Match match)
+{
+    var deltaGoals = 0.9f * match.HomeGoals - 1.1f * match.AwayGoals;
+    var result = 1 / (1 + MathF.Exp(-deltaGoals));
+
+    var eloDiff = match.HomeTeam.Elo - match.AwayTeam.Elo;
+    var expected = 1 / (1 + MathF.Exp(-eloDiff / 200));
+
+    var diff = result - expected;
+
+    if (match.HomeGoals == match.AwayGoals)
+    {
+        match.HomeTeam.Points++;
+        match.AwayTeam.Points++;
+    }
+    else if (match.HomeGoals > match.AwayGoals)
+        match.HomeTeam.Points += 3;
+    else match.AwayTeam.Points += 3;
+
+    match.HomeTeam.Elo += 40 * diff;
+    match.AwayTeam.Elo -= 40 * diff;
+}
+
+Team[] computeTeams(IEnumerable<Match> matches)
+{
+    var teams = new List<Team>();
+
+    foreach (var match in matches)
+    {
+        var team = teams
+            .FirstOrDefault(t => t.Name == match.HomeTeamName);
+        if (team is null)
+        {
+            team = new Team
+            {
+                Elo = 1500,
+                Name = match.HomeTeamName,
+                Points = 0
+            };
+            teams.Add(team);
+        }
+        
+        match.HomeTeam = team;
+    }
+
+    foreach (var match in matches)
+    {
+        var team = teams
+            .FirstOrDefault(t => t.Name == match.AwayTeamName);
+        if (team is null)
+            continue;
+        
+        match.AwayTeam = team;
+    }
+
+    foreach (var match in matches.OrderBy(m => m.Round))
+    {
+        if (!match.IsComplete)
+            continue;
+        
+        computeMatch(match);
+    }
+
+    return teams.ToArray();
 }
 
 async Task<Match[]> extractTables(string page)
@@ -89,7 +161,7 @@ Match processRow(string row, bool crr = false)
         get(); // discard
         get(); // discard
         
-        match.HomeTeam = find(
+        match.HomeTeamName = find(
             get(),
             "<span itemprop", "</span>",
             22
@@ -113,7 +185,7 @@ Match processRow(string row, bool crr = false)
         
         get();
         
-        match.AwayTeam = find(
+        match.AwayTeamName = find(
             get(),
             "<span itemprop", "</span>",
             22
@@ -123,7 +195,7 @@ Match processRow(string row, bool crr = false)
     {
         get(); // discard
 
-        match.HomeTeam = find(
+        match.HomeTeamName = find(
             get(),
             "span", "span",
             crr ? 21 : 5, 2
@@ -142,7 +214,7 @@ Match processRow(string row, bool crr = false)
             match.AwayGoals = int.Parse(scoreData[2]);
         }
 
-        match.AwayTeam = reverse(
+        match.AwayTeamName = reverse(
             find(
                 reverse(get()),
                 ">a/<",
@@ -282,20 +354,42 @@ public class Match
     public int Round { get; set; }
     public bool IsComplete { get; set; }
 
-    public string HomeTeam { get; set; }
+    public Team HomeTeam { get; set;}
+    public string HomeTeamName { get; set; }
     public int HomeGoals { get; set; }
 
-    public string AwayTeam { get; set; }
+    public Team AwayTeam { get; set; }
+    public string AwayTeamName { get; set; }
     public int AwayGoals { get; set; }
 
     public override string ToString() => IsComplete ?
-        $"{HomeTeam} {HomeGoals} x {AwayGoals} {AwayTeam} [{Round}]" :
-        $"{HomeTeam} x {AwayTeam} [{Round}]"; 
+        $"{HomeTeamName} {HomeGoals} x {AwayGoals} {AwayTeamName} [{Round}]" :
+        $"{HomeTeamName} x {AwayTeamName} [{Round}]"; 
 }
 
 public class Team
 {
     public string Name { get; set; }
     public int Points { get; set; }
-    public int Elo { get; set; }
+    public float Elo { get; set; }
+
+    public Team Clone()
+        => new Team
+        {
+            Name = this.Name,
+            Points = this.Points,
+            Elo = this.Elo
+        };
+
+    public override string ToString() =>
+        $"{Name} \t {Points} \t {Elo}";
+}
+
+public static class TeamExtension
+{
+    public static IEnumerable<Team> Clone(this IEnumerable<Team> teams)
+    {
+        foreach (var team in teams)
+            yield return team.Clone();
+    }
 }
