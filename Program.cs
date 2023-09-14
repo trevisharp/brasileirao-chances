@@ -22,10 +22,98 @@ async Task generate()
     var matches = await extractTables(page);
     var teams = computeTeams(matches);
 
-    foreach (var team in teams.OrderByDescending(p => p.Points))
+    float total = 200_000;
+    monteCarlo((int)total, 3, matches, teams);
+
+    foreach (var team in teams)
     {
-        Console.WriteLine(team);
+        Console.WriteLine($"{team.Name}");
+        Console.WriteLine($"\t1\t{100 * team.ChampionCount / total}%");
+        Console.WriteLine($"\t1-4\t{100 * team.ContinentalCount / total}%");
+        Console.WriteLine($"\t5-6\t{100 * team.QualifyContinentalCount / total}%");
+        Console.WriteLine($"\t7-12\t{100 * team.SubContinentalCount / total}%");
+        Console.WriteLine($"\t17-20\t{100 * team.RelegationCount / total}%");
     }
+}
+
+void monteCarlo(
+    int N, int stability,
+    IEnumerable<Match> matches, 
+    IEnumerable<Team> originalTeams)
+{
+    for (int n = 0; n < N; n++)
+    {
+        if (n % 100 == 99)
+            Console.WriteLine($"Round {n + 1}...");
+        simulate(matches, originalTeams, stability);
+    }
+}
+
+float random(int stability)
+{
+    float total = 0;
+    for (int i = 0; i < stability; i++)
+        total += 2 * Random.Shared.NextSingle() - 1;
+    return total / stability;
+}
+
+void simulateMatch(Match match, IEnumerable<Team> teams, int stability)
+{
+    var homeTeam = teams
+        .FirstOrDefault(t => t.Name == match.HomeTeamName);
+    var awayTeam = teams
+        .FirstOrDefault(t => t.Name == match.AwayTeamName);
+
+    var eloDiff = homeTeam.Elo - awayTeam.Elo;
+    var expected = 1 / (1 + MathF.Exp(-eloDiff / 200));
+    var result = expected + random(stability);
+    var diff = result - expected;
+    
+    if (result > .7)
+        homeTeam.Points += 3;
+    else if (result < -.8)
+        awayTeam.Points += 3;
+    else
+    {
+        homeTeam.Points++;
+        awayTeam.Points++;
+    }
+
+    homeTeam.Elo += 10 * diff;
+    awayTeam.Elo -= 10 * diff;
+}
+
+void simulate(
+    IEnumerable<Match> matches, 
+    IEnumerable<Team> originalTeams,
+    int stability)
+{
+    var teams = originalTeams.Clone().ToArray();
+    var futureMatches = 
+        from m in matches
+        where !m.IsComplete
+        orderby m.Round
+        select m;
+    
+    foreach (var match in futureMatches)
+        simulateMatch(match, teams, stability);
+        
+    var resultTeams = teams
+        .OrderByDescending(t => t.Points)
+        .Select(t => originalTeams
+            .FirstOrDefault(o => o.Name == t.Name)
+        ).ToArray();
+    
+    resultTeams[0].ChampionCount++;
+
+    for (int i = 0; i < 4; i++)
+        resultTeams[i].ContinentalCount++;
+    for (int i = 4; i < 6; i++)
+        resultTeams[i].QualifyContinentalCount++;
+    for (int i = 6; i < 12; i++)
+        resultTeams[i].SubContinentalCount++;
+    for (int i = 16; i < 20; i++)
+        resultTeams[i].RelegationCount++;
 }
 
 void computeMatch(Match match)
@@ -372,6 +460,12 @@ public class Team
     public string Name { get; set; }
     public int Points { get; set; }
     public float Elo { get; set; }
+
+    public int ChampionCount { get; set; }
+    public int ContinentalCount { get; set; }
+    public int QualifyContinentalCount { get; set; }
+    public int SubContinentalCount { get; set; }
+    public int RelegationCount { get; set; }
 
     public Team Clone()
         => new Team
