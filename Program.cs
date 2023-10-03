@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Drawing;
 using System.Net.Http;
+using System.Threading;
 using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -12,6 +13,8 @@ using System.Net.NetworkInformation;
 const int ADJUST = 160;
 const int SIMULROUNDS = 200_000;
 
+Thread.CurrentThread.SetApartmentState(ApartmentState.Unknown);
+Thread.CurrentThread.SetApartmentState(ApartmentState.STA);
 ApplicationConfiguration.Initialize();
 
 var form = new Form();
@@ -32,9 +35,140 @@ form.Load += async delegate
     var g = Graphics.FromImage(bmp);
     g.Clear(Color.White);
     
-    await generate(p => progressBar.Value = (int)(100 * p));
+    var teams = await generate(p => progressBar.Value = (int)(100 * p));
 
+    var font = new Font(FontFamily.GenericSerif, 20f);
+    var center = new StringFormat();
+    center.Alignment = StringAlignment.Center;
+    center.LineAlignment = StringAlignment.Center;
+    
+    var left = new StringFormat();
+    left.Alignment = StringAlignment.Near;
+    left.LineAlignment = StringAlignment.Center;
+    
+    var right = new StringFormat();
+    right.Alignment = StringAlignment.Far;
+    right.LineAlignment = StringAlignment.Center;
 
+    const float total = SIMULROUNDS;
+    const float div = .3333333f;
+    int maxY = 0;
+
+    g.DrawString(
+        "Probabilidades de Rebaixamento",
+        font, Brushes.Black, 
+        new RectangleF(5, 5, div * pb.Width - 30, 60),
+        center
+    );
+
+    var relegation =
+        from team in teams
+        where team.RelegationCount / total > 0.01f
+        orderby team.RelegationCount ascending
+        select team;
+    
+    float y = 70;
+    foreach (var team in relegation)
+    {
+        g.DrawString(
+            team.Name,
+            font, Brushes.Black, 
+            new RectangleF(5, y, div * pb.Width - 30, 30),
+            left
+        );
+        
+        g.DrawString(
+            $"{(MathF.Round(100 * team.RelegationCount / total))}%",
+            font, Brushes.Black, 
+            new RectangleF(5, y, div * pb.Width - 30, 30),
+            right
+        );
+
+        y += 35;
+    }
+    if (y > maxY)
+        maxY = (int)y;
+
+    g.DrawString(
+        "Probabilidades de Libertadores",
+        font, Brushes.Black, 
+        new RectangleF(15 + div * pb.Width, 5, div * pb.Width - 30, 60),
+        center
+    );
+
+    var continental =
+        from team in teams
+        where team.ContinentalCount / total > 0.01f
+        orderby team.ContinentalCount descending
+        select team;
+    
+    y = 70;
+    foreach (var team in continental)
+    {
+        g.DrawString(
+            team.Name,
+            font, Brushes.Black, 
+            new RectangleF(15 + div * pb.Width, y, div * pb.Width - 30, 30),
+            left
+        );
+        
+        g.DrawString(
+            $"{(MathF.Round(100 * team.ContinentalCount / total))}%",
+            font, Brushes.Black, 
+            new RectangleF(15 + div * pb.Width, y, div * pb.Width - 30, 30),
+            right
+        );
+
+        y += 35;
+    }
+    if (y > maxY)
+        maxY = (int)y;
+
+    g.DrawString(
+        "Probabilidades de Campeão",
+        font, Brushes.Black, 
+        new RectangleF(25 + 2 * div * pb.Width, 5, div * pb.Width - 30, 60),
+        center
+    );
+
+    var champion =
+        from team in teams
+        where team.ChampionCount / total > 0.01f
+        orderby team.ChampionCount descending
+        select team;
+    
+    y = 70;
+    foreach (var team in champion)
+    {
+        g.DrawString(
+            team.Name,
+            font, Brushes.Black, 
+            new RectangleF(25 + 2 * div * pb.Width, y, div * pb.Width - 30, 30),
+            left
+        );
+        
+        g.DrawString(
+            $"{(MathF.Round(100 * team.ChampionCount / total))}%",
+            font, Brushes.Black, 
+            new RectangleF(25 + 2 * div * pb.Width, y, div * pb.Width - 30, 30),
+            right
+        );
+
+        y += 35;
+    }
+    if (y > maxY)
+        maxY = (int)y;
+
+    pb.Refresh();
+
+    Bitmap result = new Bitmap(bmp.Width, maxY);
+    var h = Graphics.FromImage(result);
+    h.DrawImage(bmp, 
+        new Rectangle(0, 0, result.Width, result.Height),
+        new Rectangle(0, 0, bmp.Width, maxY),
+        GraphicsUnit.Pixel);
+
+    Clipboard.SetImage(result);
 };
 
 Application.Run(form);
