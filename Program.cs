@@ -1,50 +1,67 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Drawing;
 using System.Net.Http;
-// using System.Windows.Forms;
+using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Net.NetworkInformation;
 
-// ApplicationConfiguration.Initialize();
+const int ADJUST = 160;
+const int SIMULROUNDS = 200_000;
 
-// var form = new Form();
+ApplicationConfiguration.Initialize();
 
-// Application.Run(form);
+var form = new Form();
+form.WindowState = FormWindowState.Maximized;
 
-await generate();
+ProgressBar progressBar = new ProgressBar();
+progressBar.Dock = DockStyle.Top;
+form.Controls.Add(progressBar);
 
-async Task generate()
+PictureBox pb = new PictureBox();
+pb.Dock = DockStyle.Fill;
+form.Controls.Add(pb);
+
+form.Load += async delegate
+{
+    var bmp = new Bitmap(pb.Width, pb.Height);
+    pb.Image = bmp;
+    var g = Graphics.FromImage(bmp);
+    g.Clear(Color.White);
+    
+    await generate(p => progressBar.Value = (int)(100 * p));
+
+
+};
+
+Application.Run(form);
+
+async Task<Team[]> generate(Action<float> callback)
 {
     var page = await getPage();
     var matches = await extractTables(page);
     var teams = computeTeams(matches);
 
-    float total = 200_000;
-    monteCarlo((int)total, 3, matches, teams);
+    await Task.Run(() =>
+        monteCarlo(SIMULROUNDS, 3, matches, teams, callback)
+    );
 
-    foreach (var team in teams)
-    {
-        Console.WriteLine($"{team.Name}");
-        Console.WriteLine($"\t1\t{100 * team.ChampionCount / total}%");
-        Console.WriteLine($"\t1-4\t{100 * team.ContinentalCount / total}%");
-        Console.WriteLine($"\t5-6\t{100 * team.QualifyContinentalCount / total}%");
-        Console.WriteLine($"\t7-12\t{100 * team.SubContinentalCount / total}%");
-        Console.WriteLine($"\t17-20\t{100 * team.RelegationCount / total}%");
-    }
+    return teams;
 }
 
 void monteCarlo(
     int N, int stability,
     IEnumerable<Match> matches, 
-    IEnumerable<Team> originalTeams)
+    IEnumerable<Team> originalTeams,
+    Action<float> callback)
 {
     for (int n = 0; n < N; n++)
     {
         if (n % 100 == 99)
-            Console.WriteLine($"Round {n + 1}...");
+            callback(n / (float)N);
         simulate(matches, originalTeams, stability);
     }
 }
@@ -78,9 +95,6 @@ void simulateMatch(Match match, IEnumerable<Team> teams, int stability)
         homeTeam.Points++;
         awayTeam.Points++;
     }
-
-    homeTeam.Elo += 10 * diff;
-    awayTeam.Elo -= 10 * diff;
 }
 
 void simulate(
@@ -135,8 +149,8 @@ void computeMatch(Match match)
         match.HomeTeam.Points += 3;
     else match.AwayTeam.Points += 3;
 
-    match.HomeTeam.Elo += 40 * diff;
-    match.AwayTeam.Elo -= 40 * diff;
+    match.HomeTeam.Elo += ADJUST * diff;
+    match.AwayTeam.Elo -= ADJUST * diff;
 }
 
 Team[] computeTeams(IEnumerable<Match> matches)
@@ -387,9 +401,9 @@ async Task<string> getPage()
 
 bool isCacheRecently()
 {
-    var lastWrite = File.GetLastWriteTime("page.html");
+    var lastAccess = File.GetLastAccessTime("page.html").Date;
     var today = DateTime.Today;
-    var diff = lastWrite - today;
+    var diff = today - lastAccess;
     return diff.TotalDays < 1;
 }
 
