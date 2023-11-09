@@ -10,7 +10,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Net.NetworkInformation;
 
-const int ADJUST = 160;
+const int ADJUST = 80;
 const int SIMULROUNDS = 200_000;
 
 Thread.CurrentThread.SetApartmentState(ApartmentState.Unknown);
@@ -63,7 +63,7 @@ form.Load += async delegate
 
     var relegation =
         from team in teams
-        where team.RelegationCount / total > 0.01f
+        where team.RelegationCount / total > 0.001f
         orderby team.RelegationCount ascending
         select team;
     
@@ -78,7 +78,7 @@ form.Load += async delegate
         );
         
         g.DrawString(
-            $"{(MathF.Round(100 * team.RelegationCount / total))}%",
+            $"{(MathF.Round(100 * team.RelegationCount / total, 1))}%",
             font, Brushes.Black, 
             new RectangleF(5, y, div * pb.Width - 30, 30),
             right
@@ -98,8 +98,8 @@ form.Load += async delegate
 
     var continental =
         from team in teams
-        where team.ContinentalCount / total > 0.01f
-        orderby team.ContinentalCount descending
+        where (team.QualifyContinentalCount + team.ContinentalCount) / total > 0.001f
+        orderby team.QualifyContinentalCount + team.ContinentalCount descending
         select team;
     
     y = 70;
@@ -113,7 +113,7 @@ form.Load += async delegate
         );
         
         g.DrawString(
-            $"{(MathF.Round(100 * team.ContinentalCount / total))}%",
+            $"{(MathF.Round(100 * (team.QualifyContinentalCount + team.ContinentalCount) / total, 1))}%",
             font, Brushes.Black, 
             new RectangleF(15 + div * pb.Width, y, div * pb.Width - 30, 30),
             right
@@ -133,7 +133,7 @@ form.Load += async delegate
 
     var champion =
         from team in teams
-        where team.ChampionCount / total > 0.01f
+        where team.ChampionCount / total > 0.001f
         orderby team.ChampionCount descending
         select team;
     
@@ -148,7 +148,7 @@ form.Load += async delegate
         );
         
         g.DrawString(
-            $"{(MathF.Round(100 * team.ChampionCount / total))}%",
+            $"{MathF.Round(100 * team.ChampionCount / total, 1)}%",
             font, Brushes.Black, 
             new RectangleF(25 + 2 * div * pb.Width, y, div * pb.Width - 30, 30),
             right
@@ -576,13 +576,7 @@ async Task<string> getOnlinePage()
 
 async Task<bool> testConnectivity()
 {
-    var ping = new Ping();
-    var result = await ping.SendPingAsync(
-        "google.com", 3000, 
-        new byte[32], 
-        new PingOptions()
-    );
-    return result.Status == IPStatus.Success;
+    return true;
 }
 
 public class Match
